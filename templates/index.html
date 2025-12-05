@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CRM Система</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <!-- Экран входа -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="logo">
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                    <circle cx="40" cy="40" r="35" fill="#5288c1" opacity="0.2"/>
+                    <path d="M40 20 L50 30 L40 40 L30 30 Z" fill="#5288c1"/>
+                    <path d="M40 40 L50 50 L40 60 L30 50 Z" fill="#5288c1"/>
+                </svg>
+            </div>
+            <h1>CRM Система</h1>
+            <p class="subtitle">Управління 200 апаратами</p>
+            
+            <div class="form-group">
+                <label for="login-input">Логін</label>
+                <input type="text" id="login-input" placeholder="Введіть логін">
+            </div>
+            
+            <div class="form-group">
+                <label for="password-input">Пароль</label>
+                <input type="password" id="password-input" placeholder="Введіть пароль">
+            </div>
+            
+            <button class="btn-primary" onclick="handleLogin()">
+                Увійти
+            </button>
+        </div>
+    </div>
+
+    <!-- Кабинет техника -->
+    <div id="tech-cabinet" class="screen">
+        <div class="header">
+            <h2 id="tech-name">Руслан</h2>
+            <button class="btn-icon" onclick="logout()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="cabinet-content">
+            <div class="menu-grid">
+                <div class="menu-card" onclick="handleTechAction('report')">
+                    <div class="card-icon">⚙️</div>
+                    <div class="card-title">Звіт по роботі</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTechAction('tasks')">
+                    <div class="card-icon">💳</div>
+                    <div class="card-title">Завдання, замовлення</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTechAction('orders')">
+                    <div class="card-icon">🛒</div>
+                    <div class="card-title">Стіл замовлень</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTechAction('expenses')">
+                    <div class="card-icon">⬇️</div>
+                    <div class="card-title">Витрати</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Кабинет колл-центра -->
+    <div id="callcenter-cabinet" class="screen">
+        <div class="header">
+            <h2>Call-центр</h2>
+            <button class="btn-icon" onclick="logout()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="cabinet-content">
+            <div class="menu-grid">
+                <div class="menu-card pressed" onclick="handleCallCenterAction('new-task')">
+                    <div class="card-icon">⚙️</div>
+                    <div class="card-title">Нове завдання</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleCallCenterAction('new-card')">
+                    <div class="card-icon">💳</div>
+                    <div class="card-title">Нове замовлення карти</div>
+                </div>
+                
+                <div class="menu-card urgent" onclick="handleCallCenterAction('urgent')">
+                    <div class="card-icon">☢️</div>
+                    <div class="card-title">Терміново</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleCallCenterAction('status')">
+                    <div class="card-icon">📝</div>
+                    <div class="card-title">Статус завдань</div>
+                </div>
+            </div>
+
+            <!-- Меню выбора неисправности -->
+            <div id="problem-menu" class="problem-menu hidden">
+                <h3>Оберіть проблему:</h3>
+                <div class="problem-grid">
+                    <button class="problem-btn" data-problem="💰купюроприймач">
+                        <span class="problem-icon">💰</span>
+                        <span>Купюроприймач</span>
+                    </button>
+                    <button class="problem-btn" data-problem="🪙монетоприймач">
+                        <span class="problem-icon">🪙</span>
+                        <span>Монетоприймач</span>
+                    </button>
+                    <button class="problem-btn" data-problem="☠️скарга на запах">
+                        <span class="problem-icon">☠️</span>
+                        <span>Скарга на запах</span>
+                    </button>
+                    <button class="problem-btn" data-problem="🔌головний модуль">
+                        <span class="problem-icon">🔌</span>
+                        <span>Головний модуль</span>
+                    </button>
+                    <button class="problem-btn" data-problem="🚰халепа з наливом">
+                        <span class="problem-icon">🚰</span>
+                        <span>Халепа з наливом</span>
+                    </button>
+                    <button class="problem-btn" data-problem="🪣збитий літраж">
+                        <span class="problem-icon">🪣</span>
+                        <span>Збитий літраж</span>
+                    </button>
+                </div>
+                <button class="btn-secondary" onclick="closeProblemMenu()">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Кабинет техдиректора -->
+    <div id="texdir-cabinet" class="screen">
+        <div class="header">
+            <h2>Техдиректор</h2>
+            <button class="btn-icon" onclick="logout()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="cabinet-content">
+            <div class="menu-grid">
+                <div class="menu-card" onclick="handleTexdirAction('new-task')">
+                    <div class="card-icon">⚙️</div>
+                    <div class="card-title">Нове завдання</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTexdirAction('new-card')">
+                    <div class="card-icon">💳</div>
+                    <div class="card-title">Нове замовлення карти</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTexdirAction('termin-tasks')">
+                    <div class="card-icon">📝</div>
+                    <div class="card-title">Завдання з терміном</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTexdirAction('orders-table')">
+                    <div class="card-icon">🛒</div>
+                    <div class="card-title">Стіл замовлень</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTexdirAction('expenses')">
+                    <div class="card-icon">💰</div>
+                    <div class="card-title">Витрати</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleTexdirAction('all-tasks')">
+                    <div class="card-icon">📝</div>
+                    <div class="card-title">Завдання та замовлення</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Кабинет супервизора -->
+    <div id="super-cabinet" class="screen">
+        <div class="header">
+            <h2>Супервізор</h2>
+            <button class="btn-icon" onclick="logout()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="cabinet-content">
+            <div class="menu-grid">
+                <div class="menu-card" onclick="handleSuperAction('daily-report')">
+                    <div class="card-icon">📃</div>
+                    <div class="card-title">Денний звіт</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('tasks-cards')">
+                    <div class="card-icon">🗃️</div>
+                    <div class="card-title">Завдання, картки</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('orders-table')">
+                    <div class="card-icon">🛒</div>
+                    <div class="card-title">Стіл замовлень</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('map-file')">
+                    <div class="card-icon">🗺️</div>
+                    <div class="card-title">Аналіз виконання завдань</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('inki-5week')">
+                    <div class="card-icon">💰</div>
+                    <div class="card-title">Інкі 1 тиж</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('inki-1week')">
+                    <div class="card-icon">💰</div>
+                    <div class="card-title">Інкі 5 тиж</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('service-report')">
+                    <div class="card-icon">📈</div>
+                    <div class="card-title">Звіт service</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('general-report')">
+                    <div class="card-icon">📉</div>
+                    <div class="card-title">Звіт service великий</div>
+                </div>
+                
+                <div class="menu-card" onclick="handleSuperAction('service-big')">
+                    <div class="card-icon">📊</div>
+                    <div class="card-title">Service на мапі</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для отображения данных -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Результат</h3>
+                <button class="btn-icon" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Динамический контент -->
+            </div>
+        </div>
+    </div>
+	<div id="address-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Оберіть адресу</h3>
+                <button class="btn-icon" onclick="closeAddressModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 10px; color: var(--tg-theme-hint-color);">
+                    Проблема: <strong id="selected-problem-name">...</strong>
+                </p>
+                
+                <div class="address-search-container">
+                    <input type="text" id="address-input" class="search-input" placeholder="Почніть вводити адресу..." autocomplete="off">
+                    <div id="search-results" class="search-results"></div>
+                </div>
+
+                <button class="btn-primary" onclick="sendTaskToServer()" id="btn-send-task" disabled>
+                    Відправити завдання
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="report-modal" class="modal hidden" style="z-index: 9999;">
+        <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
+            
+            <div class="modal-header">
+                <h3>Звіт по техніку</h3>
+            </div>
+
+            <div class="modal-body" id="report-content" style="flex-grow: 1; overflow-y: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap;">
+                Завантаження даних...
+            </div>
+
+            <div class="modal-footer" style="padding: 15px; display: flex; gap: 10px; border-top: 1px solid var(--tg-theme-secondary-bg-color);">
+                <button class="btn-primary" style="background-color: #27ae60;" onclick="closeReportModal()">
+                    OK
+                </button>
+                <button class="btn-primary" style="background-color: #f39c12;" onclick="handleReportHelp()">
+                    HELP
+                </button>
+            </div>
+
+        </div>
+    </div>
+	<div id="tasks-modal" class="modal hidden">
+        <div class="modal-content tasks-modal-content">
+            <div class="modal-header">
+                <h3>Менеджер завдань</h3>
+                <button class="btn-icon" onclick="closeTasksModal()">×</button>
+            </div>
+            
+            <div class="tabs-header">
+                <button class="tab-btn active" onclick="switchTab('open')">Відкриті</button>
+                <button class="tab-btn" onclick="switchTab('closed')">Закриті</button>
+            </div>
+
+            <div class="modal-body">
+                <div id="tab-open" class="tab-content active">
+                    <div id="list-open" class="task-list">Завантаження...</div>
+                </div>
+
+                <div id="tab-closed" class="tab-content">
+                    <div id="list-closed" class="task-list">Завантаження...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+	<div id="tech-tasks-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Мої активні завдання</h3>
+                <button class="btn-icon" onclick="closeTechTasksModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="tech-tasks-list" class="task-list">
+                    Завантаження...
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 15px; border-top: 1px solid var(--tg-theme-secondary-bg-color);">
+                <button class="btn-primary" onclick="closeTechTasksModal()">Зрозуміло</button>
+            </div>
+        </div>
+    </div>
+	<div id="order-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Стіл замовлень</h3>
+                <button class="btn-icon" onclick="closeOrderModal()">×</button>
+            </div>
+            <div class="modal-body">
+                
+                <div class="form-group">
+                    <label>Вкажіть назву</label>
+                    <input type="text" id="order-name-input" placeholder="Що потрібно замовити?">
+                </div>
+
+                <div class="form-group" style="position: relative;">
+                    <label>Вкажіть адресу</label>
+                    <input type="text" id="order-address-input" class="search-input" placeholder="Почніть вводити адресу..." autocomplete="off">
+                    <div id="order-search-results" class="search-results"></div>
+                </div>
+
+                <button class="btn-primary" onclick="sendOrderToServer()">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+	<div id="expenses-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Внести витрати</h3>
+                <button class="btn-icon" onclick="closeExpensesModal()">×</button>
+            </div>
+            <div class="modal-body">
+                
+                <div class="form-group">
+                    <label>Вкажіть назву</label>
+                    <input type="text" id="expense-name-input" placeholder="На що витратили? (напр. Бензин)">
+                </div>
+
+                <div class="form-group">
+                    <label>Вкажіть суму</label>
+                    <input type="number" id="expense-sum-input" placeholder="0" inputmode="numeric">
+                </div>
+
+                <button class="btn-primary" onclick="sendExpenseToServer()">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+	<div id="card-order-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Нове замовлення карти</h3>
+                <button class="btn-icon" onclick="closeCardOrderModal()">×</button>
+            </div>
+            <div class="modal-body">
+                
+                <div class="form-group">
+                    <label>Вкажіть ім'я замовника</label>
+                    <input type="text" id="card-name-input" placeholder="ПІБ Клієнта">
+                </div>
+
+                <div class="form-group" style="position: relative;">
+                    <label>Вкажіть адресу</label>
+                    <input type="text" id="card-addr-input" class="search-input" placeholder="Почніть вводити адресу..." autocomplete="off">
+                    <div id="card-search-results" class="search-results"></div>
+                </div>
+
+                <button class="btn-primary" onclick="sendCardOrderToServer()">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+	<div id="urgent-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Терміново! 🔥</h3>
+                <button class="btn-icon" onclick="closeUrgentModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Напишіть причину</label>
+                    <input type="text" id="urgent-reason-input" placeholder="Що трапилось?">
+                </div>
+                <div class="form-group" style="position: relative;">
+                    <label>Вкажіть адресу</label>
+                    <input type="text" id="urgent-addr-input" class="search-input" placeholder="Пошук..." autocomplete="off">
+                    <div id="urgent-search-results" class="search-results"></div>
+                </div>
+                <button class="btn-primary" style="background-color: #e74c3c;" onclick="sendUrgentToServer()">
+                    Відправити
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="status-modal" class="modal hidden">
+        <div class="modal-content" style="max-height: 80vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3>Активні завдання</h3>
+                <button class="btn-icon" onclick="closeStatusModal()">×</button>
+            </div>
+            <div class="modal-body" id="status-list" style="overflow-y: auto; padding-top: 10px;">
+                Завантаження...
+            </div>
+            <div class="modal-footer" style="padding: 15px; border-top: 1px solid var(--tg-theme-secondary-bg-color);">
+                <button class="btn-primary" onclick="closeStatusModal()">Закрити</button>
+            </div>
+        </div>
+    </div>
+	<div id="super-orders-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Стіл замовлень (Активні)</h3>
+                <button class="btn-icon" onclick="closeSuperOrdersModal()">×</button>
+            </div>
+            <div class="modal-body" id="super-orders-list">
+                Завантаження...
+            </div>
+        </div>
+    </div>
+    <div id="termin-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Завдання з терміном</h3>
+                <button class="btn-icon" onclick="closeTerminModal()">×</button>
+            </div>
+            <div class="modal-body">
+                
+                <div class="form-group">
+                    <label>Яке завдання?</label>
+                    <input type="text" id="termin-text-input" placeholder="Опис роботи">
+                </div>
+
+                <div class="form-group">
+                    <label>Кількість днів на виконання</label>
+                    <input type="number" id="termin-days-input" placeholder="Наприклад: 3" inputmode="numeric">
+                </div>
+
+                <div class="form-group" style="position: relative;">
+                    <label>Вкажіть адресу</label>
+                    <input type="text" id="termin-addr-input" class="search-input" placeholder="Пошук..." autocomplete="off">
+                    <div id="termin-search-results" class="search-results"></div>
+                </div>
+
+                <button class="btn-primary" onclick="sendTerminToServer()">
+                    Створити
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Загрузка -->
+    <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        <p>Завантаження...</p>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
