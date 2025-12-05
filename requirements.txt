@@ -1,4 +1,8 @@
 Flask==3.0.0
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
+<<<<<<< HEAD
 gunicorn==21.2.0
+=======
+gunicorn==21.2.0
+>>>>>>> d7a79345126c756d1a561e6bcc0ca1c93033d84d
