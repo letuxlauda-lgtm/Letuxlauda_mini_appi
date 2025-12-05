@@ -543,16 +543,3 @@ def create_termin_task():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, port=port, host='0.0.0.0')
-```
-
----
-
-## 📝 **Полная последовательность действий:**
-
-### 1. **Создайте `requirements.txt`** (если еще не создали):
-```
-Flask==3.0.0
-psycopg2-binary==2.9.9
-python-dotenv==1.0.0
-pandas==2.1.4
-gunicorn==21.2.0
