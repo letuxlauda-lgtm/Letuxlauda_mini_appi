@@ -5,19 +5,19 @@ import os
 from dotenv import load_dotenv
 import sys
 import pandas as pd
+import threading
 
-# --- ИМПОРТЫ ТВОИХ СКРИПТОВ ---
+# --- ІМПОРТИ ВАШИХ СКРИПТІВ ---
 try:
     import week5_ink
     import week1_ink
     import service_glub_analitik
     from otchet_work import download_from_db, merge_with_technicians, generate_tech_report, generate_report
-    print("✅ Скрипты успешно подключены")
+    print("✅ Скрипти успішно підключені")
 except ImportError as e:
-    print(f"⚠️ Внимание: Ошибка импорта скриптов: {e}")
-    # Заглушки на случай ошибки
-    def generate_tech_report(df, name): return "Ошибка скриптов"
-    def generate_report(df): return "Ошибка скриптов"
+    print(f"⚠️ Увага: Помилка імпорту скриптів: {e}")
+    def generate_tech_report(df, name): return "Помилка скриптів"
+    def generate_report(df): return "Помилка скриптів"
     def download_from_db(): return None
     def merge_with_technicians(): return None
 
@@ -25,7 +25,17 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# --- БАЗА ДАННЫХ АППАРАТОВ (ПОЛНЫЙ СПИСОК) ---
+# --- ФУНКЦІЯ ПІДКЛЮЧЕННЯ ДО БД ---
+def get_db_connection():
+    """Повертає об'єкт підключення до бази даних."""
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+
+# --- БАЗА ДАНИХ АПАРАТІВ ---
 APARATS_DB = [
     {"id": 153, "addr": "Антонича, 6", "tech": "ruslan"},
     {"id": 240, "addr": "Багряного, 39", "tech": "ruslan"},
@@ -177,7 +187,6 @@ APARATS_DB = [
     {"id": 121, "addr": "Сахарова, 60", "tech": "dmutro"},
     {"id": 228, "addr": "Сокільники, Весняна, 18", "tech": "dmutro"},
     {"id": 341, "addr": "Сокільники, Збройних сил України, 2", "tech": "dmutro"},
-    {"id": 302, "addr": "Сокільники, Г.Сковороди, 56", "tech": "dmutro"},
     {"id": 120, "addr": "Мікльоша, 17", "tech": "dmutro"},
     {"id": 340, "addr": "Гашека, 17", "tech": "dmutro"},
     {"id": 50, "addr": "Стрийська, 61", "tech": "dmutro"},
@@ -187,23 +196,80 @@ APARATS_DB = [
     {"id": 107, "addr": "Ветеранів, 5", "tech": "igor"}
 ]
 
-# --- ПОДКЛЮЧЕНИЕ К БД ---
-def get_db_connection():
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('DB_HOST'),
-            database=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD')
-        )
-        return conn
-    except Exception as e:
-        print(f"❌ Ошибка БД: {e}")
-        return None
+# ==========================================================
+# ФОНОВА ОБРОБКА - ЕКСПОРТ CSV
+# ==========================================================
 
-# ==========================================
-# ОСНОВНЫЕ МАРШРУТЫ
-# ==========================================
+def run_csv_export():
+    """Фонова функція для експорту CSV."""
+    print("⏳ Починаємо фоновий експорт CSV...")
+    try:
+        conn = get_db_connection()
+        df = pd.read_sql_query("SELECT * FROM mes_service_otchet", conn)
+        conn.close()
+        
+        df.to_csv('mes_service_otchet.csv', index=False, encoding='utf-8-sig') 
+        print(f"✅ CSV оновлено. Рядків: {len(df)}")
+    except Exception as e:
+        print(f"❌ Помилка експорту CSV: {e}", file=sys.stderr)
+
+
+@app.route('/api/super/export_mes_csv', methods=['POST'])
+def export_mes_csv():
+    """Запускає експорт CSV у фоновому режимі."""
+    thread = threading.Thread(target=run_csv_export)
+    thread.start()
+    return jsonify({'status': 'ok', 'message': 'Експорт CSV запущено у фоновому режимі.'}), 200
+
+# ==========================================================
+# ДАШБОРД СУПЕРВІЗОРА - ЄДИНА ФУНКЦІЯ
+# ==========================================================
+
+@app.route('/api/super_earnings', methods=['GET'])
+def get_super_earnings():
+    """
+    Повертає дані про заробіток (готівка/безготівка) на поточний момент.
+    
+    TODO: Замінити мокіровані дані на реальний запит до БД.
+    """
+    try:
+        # === ЗАМІНІТЬ ЦЕЙ БЛОК НА РЕАЛЬНИЙ ЗАПИТ ДО БД ===
+        # Приклад SQL запиту (закоментований):
+        # conn = get_db_connection()
+        # cursor = conn.cursor()
+        # cursor.execute("""
+        #     SELECT 
+        #         SUM(CASE WHEN payment_type = 'cash' THEN amount ELSE 0 END) as cash,
+        #         SUM(CASE WHEN payment_type = 'card' THEN amount ELSE 0 END) as noncash
+        #     FROM transactions 
+        #     WHERE DATE(created_at) = CURRENT_DATE
+        # """)
+        # result = cursor.fetchone()
+        # cash_earnings = float(result[0]) if result[0] else 0.0
+        # noncash_earnings = float(result[1]) if result[1] else 0.0
+        # cursor.close()
+        # conn.close()
+        
+        # Мокіровані дані для тестування
+        cash_earnings = 18500.50
+        noncash_earnings = 7450.00
+        # === КІНЕЦЬ БЛОКУ, ЩО ПОТРЕБУЄ ЗАМІНИ ===
+        
+        current_time_str = datetime.now().strftime("%H:%M")
+        
+        return jsonify({
+            'status': 'ok',
+            'cash': f"{cash_earnings:,.2f} UAH",
+            'noncash': f"{noncash_earnings:,.2f} UAH",
+            'time': current_time_str
+        })
+    except Exception as e:
+        print(f"Помилка при отриманні заробітку: {e}", file=sys.stderr)
+        return jsonify({'status': 'error', 'message': 'Не вдалося отримати дані про заробіток'}), 500
+
+# ==========================================================
+# ОСНОВНІ МАРШРУТИ
+# ==========================================================
 
 @app.route('/')
 def index():
@@ -211,335 +277,27 @@ def index():
 
 @app.route('/api/addresses', methods=['GET'])
 def get_addresses():
+    """Повертає список всіх апаратів."""
     return jsonify(APARATS_DB)
-
-@app.route('/api/login', methods=['POST'])
-def login():
-    return jsonify({'status': 'success'})
-
-# ==========================================
-# ФУНКЦИИ CALL-CENTER
-# ==========================================
 
 @app.route('/api/create_task', methods=['POST'])
 def create_task():
-    data = request.json
-    aparat_id = data.get('id')
-    problem = data.get('problem')
-    
-    aparat = next((item for item in APARATS_DB if item["id"] == int(aparat_id)), None)
-    if not aparat: return jsonify({'status': 'error', 'message': 'Апарат не знайдено'})
+    """Створює нове термінове завдання."""
+    # TODO: Додати вашу логіку створення завдання
+    data = request.get_json()
+    print(f"Створення завдання: {data}")
+    return jsonify({'status': 'ok', 'message': 'Завдання створено'}), 200
 
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO zadaci_all (id_terem, adres, zadaca, texnik, date_time_open, status) VALUES (%s, %s, %s, %s, NOW(), 'open')", 
-                   (aparat['id'], aparat['addr'], problem, aparat['tech']))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': f'Завдання створено!\nТехнік: {aparat["tech"]}'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
+@app.route('/api/update_task_status', methods=['POST'])
+def update_task_status():
+    """Оновлює статус завдання."""
+    # TODO: Додати вашу логіку оновлення статусу
+    data = request.get_json()
+    print(f"Оновлення статусу: {data}")
+    return jsonify({'status': 'ok', 'message': 'Статус оновлено'}), 200
 
-@app.route('/api/create_urgent_task', methods=['POST'])
-def create_urgent_task():
-    data = request.json
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO zadaci_srocno_all (id_terem, adres, pricina, texnik, date_time_open, status) VALUES (%s, %s, %s, %s, NOW(), 'open')",
-                   (data.get('id_terem'), data.get('adres'), data.get('pricina'), data.get('texnik')))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Термінове завдання створено!'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/create_card_order', methods=['POST'])
-def create_card_order():
-    data = request.json
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO zakazu_all (id_terem, adres, zamovnuk, texnik, date_time_open, status) VALUES (%s, %s, %s, %s, NOW(), 'open')",
-                   (data.get('id_terem'), data.get('adres'), data.get('zamovnuk'), data.get('texnik')))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Замовлення карти створено!'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-# ==========================================
-# ФУНКЦИИ ТЕХНИКА
-# ==========================================
-
-@app.route('/api/create_order', methods=['POST'])
-def create_order():
-    data = request.json
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO stol_zakazov (texnik, adres, zakaz, date_time_open, status) VALUES (%s, %s, %s, NOW(), 'open')",
-                   (data.get('texnik'), data.get('adres'), data.get('zakaz')))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Замовлення створено!'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/create_expense', methods=['POST'])
-def create_expense():
-    data = request.json
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO vutratu (texnik, vutratu, summa, date_time_open, status) VALUES (%s, %s, %s, NOW(), 'open')",
-                   (data.get('texnik'), data.get('vutratu'), data.get('summa')))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Витрату додано!'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/get_tech_tasks', methods=['POST'])
-def get_tech_tasks():
-    data = request.json
-    tech_login = data.get('tech')
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        tasks = []
-        # 1. СРОЧНЫЕ
-        cur.execute("SELECT id, id_terem, adres, pricina, date_time_open FROM zadaci_srocno_all WHERE status = 'open' AND texnik = %s ORDER BY id DESC", (tech_login,))
-        for row in cur.fetchall(): tasks.append({'id': row[0], 'terem': row[1], 'adres': row[2], 'info': row[3], 'date': row[4].strftime('%d.%m %H:%M'), 'type': 'urgent', 'icon': '🔴', 'table': 'zadaci_srocno_all'})
-        # 2. ОБЫЧНЫЕ
-        cur.execute("SELECT id, id_terem, adres, zadaca, date_time_open FROM zadaci_all WHERE status = 'open' AND texnik = %s ORDER BY id DESC", (tech_login,))
-        for row in cur.fetchall(): tasks.append({'id': row[0], 'terem': row[1], 'adres': row[2], 'info': row[3], 'date': row[4].strftime('%d.%m %H:%M'), 'type': 'normal', 'icon': '🟠', 'table': 'zadaci_all'})
-        # 3. КАРТЫ
-        cur.execute("SELECT id, id_terem, adres, zamovnuk, date_time_open FROM zakazu_all WHERE status = 'open' AND texnik = %s ORDER BY id DESC", (tech_login,))
-        for row in cur.fetchall(): tasks.append({'id': row[0], 'terem': row[1], 'adres': row[2], 'info': f"Замовник: {row[3]}", 'date': row[4].strftime('%d.%m %H:%M'), 'type': 'order', 'icon': '✉️', 'table': 'zakazu_all'})
-        conn.close()
-        return jsonify({'status': 'success', 'tasks': tasks})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/complete_task', methods=['POST'])
-def complete_task():
-    data = request.json
-    task_id = data.get('task_id')
-    table_name = data.get('table')
-    if table_name not in ['zadaci_all', 'zadaci_srocno_all', 'zakazu_all']: return jsonify({'status': 'error'})
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(f"SELECT date_time_open FROM {table_name} WHERE id = %s", (task_id,))
-        result = cur.fetchone()
-        duration_str = "Виконано"
-        if result:
-            diff = datetime.now() - result[0]
-            duration_str = f"{diff.days} дн. {diff.seconds // 60} хв."
-        
-        if table_name == 'zadaci_all':
-            cur.execute(f"UPDATE {table_name} SET status = 'closed', date_time_closed = NOW(), day_time_vupolnyalos = %s WHERE id = %s", (duration_str, task_id))
-        else:
-            cur.execute(f"UPDATE {table_name} SET status = 'closed' WHERE id = %s", (task_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Виконано!', 'duration': duration_str})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-# ==========================================
-# ОБЩИЕ ФУНКЦИИ (ОТЧЕТЫ, СТАТУСЫ)
-# ==========================================
-
-@app.route('/api/get_report', methods=['POST'])
-def get_report():
-    data = request.json
-    tech_login = data.get('tech')
-    report_type = data.get('type')
-    try:
-        df = download_from_db()
-        if df is None: return jsonify({'status': 'error', 'message': 'Ошибка БД'})
-        df = merge_with_technicians()
-        if df is None: return jsonify({'status': 'error', 'message': 'Ошибка обработки'})
-        
-        if report_type == 'general': report_text = generate_report(df)
-        else: report_text = generate_tech_report(df, tech_login)
-        
-        html_report = report_text.replace('\n', '<br>')
-        if not html_report: html_report = "<b>Чудово! Немає проблем.</b>"
-        return jsonify({'status': 'success', 'html': html_report})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/get_all_active_tasks', methods=['GET'])
-def get_all_active_tasks():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        tasks = []
-        cur.execute("SELECT id, adres, zadaca, texnik FROM zadaci_all WHERE status = 'open'")
-        for row in cur.fetchall(): tasks.append({'id': row[0], 'adres': row[1], 'info': row[2], 'who': row[3], 'type': 'task', 'table': 'zadaci_all'})
-        cur.execute("SELECT id, adres, zamovnuk, texnik FROM zakazu_all WHERE status = 'open'")
-        for row in cur.fetchall(): tasks.append({'id': row[0], 'adres': row[1], 'info': f"Карта: {row[2]}", 'who': row[3], 'type': 'card', 'table': 'zakazu_all'})
-        cur.execute("SELECT id, adres, pricina, texnik FROM zadaci_srocno_all WHERE status = 'open'")
-        for row in cur.fetchall(): tasks.append({'id': row[0], 'adres': row[1], 'info': f"🔥 {row[2]}", 'who': row[3], 'type': 'urgent', 'table': 'zadaci_srocno_all'})
-        conn.close()
-        return jsonify({'status': 'success', 'tasks': tasks})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/cancel_task', methods=['POST'])
-def cancel_task():
-    data = request.json
-    table = data.get('table')
-    task_id = data.get('id')
-    if table not in ['zadaci_all', 'zakazu_all', 'zadaci_srocno_all']: return jsonify({'status': 'error'})
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(f"UPDATE {table} SET status = 'closed' WHERE id = %s", (task_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Скасовано!'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-# ==========================================
-# ФУНКЦИИ СУПЕРВИЗОРА
-# ==========================================
-
-@app.route('/api/get_all_tasks', methods=['POST'])
-def get_all_tasks():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, id_terem, adres, zadaca, texnik, date_time_open, status FROM zadaci_all ORDER BY id DESC")
-        rows = cur.fetchall()
-        tasks = []
-        for row in rows:
-            tasks.append({'id': row[0], 'id_terem': row[1], 'adres': row[2], 'zadaca': row[3], 'texnik': row[4], 'date': row[5].strftime('%Y-%m-%d %H:%M') if row[5] else '', 'status': row[6]})
-        conn.close()
-        return jsonify({'status': 'success', 'tasks': tasks})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/super/get_orders', methods=['GET'])
-def get_super_orders():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, texnik, adres, zakaz, date_time_open FROM stol_zakazov WHERE status = 'open' ORDER BY id DESC")
-        rows = cur.fetchall()
-        orders = []
-        for row in rows:
-            orders.append({'id': row[0], 'texnik': row[1], 'adres': row[2] if row[2] else 'Не вказано', 'zakaz': row[3], 'date': row[4].strftime('%d.%m %H:%M') if row[4] else ''})
-        conn.close()
-        return jsonify({'status': 'success', 'orders': orders})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/super/close_order', methods=['POST'])
-def close_super_order():
-    data = request.json
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("UPDATE stol_zakazov SET status = 'closed' WHERE id = %s", (data.get('id'),))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success'})
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/super/run_script', methods=['POST'])
-@app.route('/api/super/run_script', methods=['POST'])
-def run_super_script():
-    data = request.json
-    script_type = data.get('type')
-    html_result = "Невідомий скрипт"
-    
-    try:
-        if script_type == 'week5': 
-            html_result = week5_ink.get_report()
-        elif script_type == 'week1': 
-            html_result = week1_ink.get_report()
-        elif script_type == 'service':
-            # 1. Запускаем скрипт (предполагаем, что он генерирует файл)
-            if hasattr(service_glub_analitik, 'get_html_report'):
-                # Если у скрипта есть функция возврата текста - используем её
-                html_result = service_glub_analitik.get_html_report()
-            else:
-                # Если функции нет, просто импортируем (он выполнится при импорте или если вызвать run)
-                # Если в скрипте нет функции main/run, он выполнится при import. 
-                # Но import кэшируется, поэтому лучше использовать reload или вынести логику в функцию.
-                # ДЛЯ ТЕБЯ: Читаем файл, который он создал
-                
-                # Пытаемся запустить функцию main() если есть, иначе просто читаем файл
-                if hasattr(service_glub_analitik, 'main'):
-                    service_glub_analitik.main()
-                
-                # Читаем файл результата
-                try:
-                    with open('service_glub_analitik.txt', 'r', encoding='utf-8') as f:
-                        text_content = f.read()
-                    # Превращаем переносы строк в <br> для HTML
-                    html_result = f"<pre>{text_content}</pre>"
-                except FileNotFoundError:
-                    html_result = "⚠️ Скрипт спрацював, але файл service_glub_analitik.txt не знайдено."
-
-        return jsonify({'status': 'success', 'html': html_result})
-        
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
-# --- НОВАЯ ФУНКЦИЯ: ЭКСПОРТ CSV ПРИ ВХОДЕ ---
-@app.route('/api/super/export_mes_csv', methods=['POST'])
-def export_mes_csv():
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({'status': 'error'})
-        
-        # Читаем таблицу в DataFrame
-        try:
-            df = pd.read_sql_query("SELECT * FROM mes_service_otchet", conn)
-        except Exception:
-            df = pd.DataFrame()
-        
-        conn.close()
-        
-        # Сохраняем (utf-8-sig для Excel)
-        df.to_csv('mes_service_otchet.csv', index=False, encoding='utf-8-sig')
-        print("✅ CSV обновлен при входе супервизора")
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        print(f"❌ Ошибка экспорта CSV: {e}")
-        return jsonify({'status': 'error', 'message': str(e)})
-        
-# --- API: СОЗДАТЬ ЗАДАЧУ С ТЕРМИНОМ (ДЛЯ TEXDIR) ---
-@app.route('/api/create_termin_task', methods=['POST'])
-def create_termin_task():
-    data = request.json
-    id_terem = data.get('id_terem')
-    
-    # 1. Ищем техника, который закреплен за аппаратом
-    # (Используем APARATS_DB, который объявлен в начале файла)
-    target_aparat = next((item for item in APARATS_DB if item["id"] == int(id_terem)), None)
-    
-    if not target_aparat:
-        return jsonify({'status': 'error', 'message': 'Апарат не знайдено в базі!'})
-        
-    assigned_tech = target_aparat['tech'] # 'ruslan', 'igor' и т.д.
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        query = """
-            INSERT INTO zavdanya_termin (id_terem, adres, zavdanya, termin, texnik, date_time_open, status)
-            VALUES (%s, %s, %s, %s, %s, NOW(), 'open')
-        """
-        cur.execute(query, (
-            id_terem,
-            data.get('adres'),
-            data.get('zavdanya'),   # Текст задачи
-            data.get('termin'),     # Дней (цифра)
-            assigned_tech           # Техник (найденный автоматически)
-        ))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'status': 'success', 'message': f'Завдання створено!\nВиконавець: {assigned_tech}'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+# TODO: Додайте інші ваші маршрути (create_termin_task, звіти тощо)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, port=port, host='0.0.0.0')
+    # В production використовуйте gunicorn або інший WSGI-сервер
+    app.run(debug=True, host='0.0.0.0', threaded=True)

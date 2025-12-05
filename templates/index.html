@@ -1,514 +1,640 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CRM Система</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-</head>
-<body>
-    <!-- Экран входа -->
-    <div id="login-screen" class="screen active">
-        <div class="login-container">
-            <div class="logo">
-                <svg width="80" height="80" viewBox="0 0 80 80">
-                    <circle cx="40" cy="40" r="35" fill="#5288c1" opacity="0.2"/>
-                    <path d="M40 20 L50 30 L40 40 L30 30 Z" fill="#5288c1"/>
-                    <path d="M40 40 L50 50 L40 60 L30 50 Z" fill="#5288c1"/>
-                </svg>
-            </div>
-            <h1>CRM Система</h1>
-            <p class="subtitle">Управління 200 апаратами</p>
+// Инициализация Telegram Web App
+let tg = window.Telegram.WebApp;
+tg.expand();
+tg.enableClosingConfirmation();
+
+// Тема
+document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
+document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
+document.documentElement.style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color || '#999999');
+document.documentElement.style.setProperty('--tg-theme-button-color', tg.themeParams.button_color || '#5288c1');
+document.documentElement.style.setProperty('--tg-theme-button-text-color', tg.themeParams.button_text_color || '#ffffff');
+document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', tg.themeParams.secondary_bg_color || '#f4f4f5');
+
+// Глобальные переменные
+const users = {
+    'sup1': { password: 'sup1$', role: 'super', name: 'Супервізор' },
+    'rus1': { password: 'rus1$', role: 'tech', name: 'Руслан', tech: 'ruslan' },
+    'callcentr1': { password: 'callcentr1$', role: 'callcenter', name: 'Call-центр' },
+    'igor1': { password: 'igor1$', role: 'tech', name: 'Ігор', tech: 'igor' },
+    'dmut1': { password: 'dmut1$', role: 'tech', name: 'Дмитро', tech: 'dmutro' },
+    'texdir1': { password: 'texdir1$', role: 'texdir', name: 'Тех. Директор' }
+};
+
+let currentUser = null;
+let currentProblem = '';
+let selectedAparat = null; // {id: 123, addr: 'Адреса', tech: 'ruslan'}
+let currentTasks = [];
+
+// --- UTILS ---
+
+// Показать/скрыть лоадер
+function showLoading() { document.getElementById('loading').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+// Отображение сообщения Telegram
+function showTgAlert(text, callback = null) {
+    if (tg.showAlert) {
+        tg.showAlert(text, callback);
+    } else {
+        alert(text);
+        if (callback) callback();
+    }
+}
+
+// Переключение экранов
+function hideAllScreens() {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+}
+
+function showCallCenterCabinet() {
+    hideAllScreens();
+    document.getElementById('callcenter-cabinet').classList.add('active');
+}
+function showTechCabinet() {
+    hideAllScreens();
+    document.getElementById('tech-cabinet').classList.add('active');
+    document.getElementById('tech-cabinet-title').innerText = `Кабінет ${currentUser.name}`;
+    loadTasks();
+}
+function showTexdirCabinet() {
+    hideAllScreens();
+    document.getElementById('texdir-cabinet').classList.add('active');
+}
+function showSuperCabinet() {
+    hideAllScreens();
+    document.getElementById('super-cabinet').classList.add('active');
+    document.getElementById('super-cabinet-title').innerText = `Кабінет ${currentUser.name}`;
+    loadTasks();
+}
+
+// --- API CALLS ---
+
+// 1. Загрузка задач (для всех ролей, кроме TexDir)
+async function loadTasks() {
+    if (!currentUser) return;
+    showLoading();
+
+    const role = currentUser.role;
+    const tech_name = currentUser.tech || null; // Для техников
+
+    try {
+        const response = await fetch('/api/get_tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: role, tech_name: tech_name })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'ok') {
+            currentTasks = data.tasks;
+            renderTasks(currentTasks);
+        } else {
+            showTgAlert(`Помилка завантаження задач: ${data.message}`);
+            console.error('API Error:', data.message);
+        }
+    } catch (error) {
+        showTgAlert(`Помилка зв'язку з сервером: ${error.message}`);
+        console.error('Fetch Error:', error);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 2. Отправка обычной задачи (CallCenter/Super)
+async function sendTaskToServer() {
+    if (!selectedAparat || !currentProblem) {
+        showTgAlert("Будь ласка, оберіть апарат та тип проблеми.");
+        return;
+    }
+
+    const zavdanya_text = document.getElementById('task-text-input').value.trim();
+    if (!zavdanya_text) {
+        showTgAlert("Будь ласка, введіть детальний опис завдання.");
+        return;
+    }
+
+    showLoading();
+    
+    try {
+        const payload = {
+            id_terem: selectedAparat.id,
+            adres: selectedAparat.addr,
+            zavdanya: `${currentProblem}: ${zavdanya_text}`,
+        };
+
+        const response = await fetch('/api/create_task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            closeAddressModal();
+            showTgAlert(data.message, loadTasks); // Обновляем список после создания
+        } else {
+            showTgAlert(`Помилка створення задачі: ${data.message}`);
+        }
+    } catch (error) {
+        showTgAlert(`Помилка зв'язку з сервером: ${error.message}`);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 3. Отправка задачи с термином (TexDir)
+async function sendTerminToServer() {
+    const terminDays = parseInt(document.getElementById('termin-days-input').value);
+    const zavdanyaText = document.getElementById('termin-text-input').value.trim();
+
+    if (!selectedAparat || !terminDays || !zavdanyaText || terminDays <= 0) {
+        showTgAlert("Будь ласка, заповніть усі поля коректно.");
+        return;
+    }
+
+    showLoading();
+    
+    try {
+        const payload = {
+            id_terem: selectedAparat.id,
+            adres: selectedAparat.addr,
+            zavdanya: zavdanyaText,
+            termin: terminDays // Количество дней
+        };
+
+        const response = await fetch('/api/create_termin_task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            closeTerminModal();
+            showTgAlert(data.message);
+        } else {
+            showTgAlert(`Помилка створення задачі: ${data.message}`);
+        }
+    } catch (error) {
+        showTgAlert(`Помилка зв'язку з сервером: ${error.message}`);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 4. Закрытие задачи (Tech)
+async function closeTask(taskId) {
+    showTgAlert(`Ви впевнені, що хочете закрити завдання #${taskId}?`, async () => {
+        showLoading();
+        try {
+            const response = await fetch('/api/close_task', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_id: taskId })
+            });
+
+            const data = await response.json();
             
-            <div class="form-group">
-                <label for="login-input">Логін</label>
-                <input type="text" id="login-input" placeholder="Введіть логін">
-            </div>
+            if (data.status === 'ok') {
+                showTgAlert(data.message, loadTasks); // Обновляем список после закрытия
+            } else {
+                showTgAlert(`Помилка закриття задачі: ${data.message}`);
+            }
+        } catch (error) {
+            showTgAlert(`Помилка зв'язку з сервером: ${error.message}`);
+        } finally {
+            hideLoading();
+        }
+    });
+}
+
+// 5. Запуск отчета (Super)
+async function generateReport() {
+    const startDate = document.getElementById('report-start-date').value;
+    const endDate = document.getElementById('report-end-date').value;
+
+    if (!startDate || !endDate) {
+        showTgAlert("Будь ласка, оберіть початкову та кінцеву дату.");
+        return;
+    }
+
+    showLoading();
+    
+    // Временно отключим API и будем выводить заглушку, пока API не будет доработано
+    /*
+    try {
+        const response = await fetch('/api/run_report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ report_type: 'all', start_date: startDate, end_date: endDate })
+        });
+
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            document.getElementById('report-data').innerText = data.report;
+            document.getElementById('report-output').classList.remove('hidden');
+        } else {
+            showTgAlert(`Помилка формування звіту: ${data.message}`);
+            document.getElementById('report-data').innerText = `Помилка: ${data.message}`;
+            document.getElementById('report-output').classList.remove('hidden');
+        }
+    } catch (error) {
+        showTgAlert(`Помилка зв'язку з сервером: ${error.message}`);
+    } finally {
+        hideLoading();
+    }
+    */
+    
+    // --- ЗАГЛУШКА ДЛЯ ОТЧЕТА ---
+    setTimeout(() => {
+        const dummyReport = `*** ЗВІТ ПРО ВИКОНАННЯ ЗАВДАНЬ ***\n\nПеріод: ${startDate} по ${endDate}\n\nВсього відкрито: 45\nВсього закрито: 30\n\n- Руслан: 12 закритих\n- Ігор: 15 закритих\n- Дмитро: 3 закритих\n\n--- Деталі ---\nЗавдання #123 (Інкасація, Антонича, 6) - Закрито\nЗавдання #124 (Ремонт, Величковського, 58) - Закрито\n...`;
+        document.getElementById('report-data').innerText = dummyReport;
+        document.getElementById('report-output').classList.remove('hidden');
+        hideLoading();
+        showTgAlert("Звіт сформовано успішно (Дані є тестовими).");
+    }, 1000);
+    // --- КОНЕЦ ЗАГЛУШКИ ---
+}
+
+// --- RENDERING ---
+
+// Отрисовка списка задач для кабинетов (Super/Tech/CallCenter)
+function renderTasks(tasks) {
+    const isTech = currentUser.role === 'tech';
+    const listId = isTech ? 'tech-tasks-list' : 'super-tasks-list';
+    const listElement = document.getElementById(listId);
+    listElement.innerHTML = '';
+    
+    const openTasks = tasks.filter(t => t.status === 'open');
+    const closedTasks = tasks.filter(t => t.status === 'closed');
+    
+    // Обновляем статистику (только для Super)
+    if (currentUser.role === 'super') {
+        document.getElementById('stat-active-tasks').innerText = openTasks.length;
+        // Здесь можно добавить логику для "закрыто сегодня"
+        document.getElementById('stat-closed-today').innerText = closedTasks.filter(t => {
+            if (t.date_time_close) {
+                const closeDate = new Date(t.date_time_close.split(' ')[0]);
+                const today = new Date();
+                return closeDate.toDateString() === today.toDateString();
+            }
+            return false;
+        }).length;
+    }
+
+    // Если нет открытых задач
+    if (openTasks.length === 0 && isTech) {
+        document.getElementById('tech-no-tasks').classList.remove('hidden');
+    } else if (isTech) {
+        document.getElementById('tech-no-tasks').classList.add('hidden');
+    }
+    
+    // Рендерим открытые задачи
+    openTasks.forEach(task => {
+        const taskElement = document.createElement('div');
+        taskElement.className = `task-item status-${task.status} ${task.is_overdue ? 'overdue' : ''}`;
+        
+        let overdue_label = task.is_overdue ? '<span class="overdue-label">Просрочено</span>' : '';
+        let termin_info = task.termin_days > 0 ? `Термін: ${task.termin_days} дн. (до ${task.due_date})` : 'Термін: 1 дн.';
+        let remaining_info = task.is_overdue ? 
+            `<span class="text-danger">Просрочено на ${Math.abs(task.remaining_days)} дн.</span>` :
+            `<span class="text-success">Залишилось: ${task.remaining_days} дн.</span>`;
             
-            <div class="form-group">
-                <label for="password-input">Пароль</label>
-                <input type="password" id="password-input" placeholder="Введіть пароль">
+        taskElement.innerHTML = `
+            <div class="task-header">
+                <span class="task-id">#${task.id}</span>
+                <span class="aparat-id">ID: ${task.id_terem}</span>
+                ${overdue_label}
             </div>
+            <p class="task-address">${task.adres}</p>
+            <p class="task-text">${task.zavdanya}</p>
+            <div class="task-meta">
+                <p>Технік: <strong>${task.texnik}</strong></p>
+                <p>${termin_info}</p>
+                <p>${task.termin_days > 1 ? remaining_info : ''}</p>
+            </div>
+            ${isTech ? `<button class="btn-success btn-small" onclick="closeTask(${task.id})">Закрити</button>` : ''}
+        `;
+        listElement.appendChild(taskElement);
+    });
+    
+    // Рендерим историю (закрытые задачи) только для Техника
+    if (isTech) {
+        const historyListElement = document.getElementById('tech-history-list');
+        historyListElement.innerHTML = '';
+        
+        if (closedTasks.length === 0) {
+            document.getElementById('tech-no-history').classList.remove('hidden');
+        } else {
+            document.getElementById('tech-no-history').classList.add('hidden');
+        }
+        
+        closedTasks.forEach(task => {
+            const taskElement = document.createElement('div');
+            taskElement.className = 'task-item status-closed';
+            taskElement.innerHTML = `
+                <div class="task-header">
+                    <span class="task-id">#${task.id}</span>
+                    <span class="aparat-id">ID: ${task.id_terem}</span>
+                </div>
+                <p class="task-address">${task.adres}</p>
+                <p class="task-text">${task.zavdanya}</p>
+                <div class="task-meta">
+                    <p>Закрито: <strong>${task.date_time_close}</strong></p>
+                </div>
+            `;
+            historyListElement.appendChild(taskElement);
+        });
+    }
+
+    // Рендерим закрытые задачи для Супервизора (в отдельном блоке, если нужно)
+    if (currentUser.role === 'super') {
+         // Для Super будем держать все в одном списке
+         closedTasks.forEach(task => {
+            const taskElement = document.createElement('div');
+            taskElement.className = 'task-item status-closed';
             
-            <button class="btn-primary" onclick="handleLogin()">
-                Увійти
-            </button>
-        </div>
-    </div>
+            taskElement.innerHTML = `
+                <div class="task-header">
+                    <span class="task-id">#${task.id}</span>
+                    <span class="aparat-id">ID: ${task.id_terem}</span>
+                </div>
+                <p class="task-address">${task.adres}</p>
+                <p class="task-text">${task.zavdanya}</p>
+                <div class="task-meta">
+                    <p>Технік: <strong>${task.texnik}</strong></p>
+                    <p>Закрито: <strong>${task.date_time_close}</strong></p>
+                </div>
+            `;
+            listElement.appendChild(taskElement);
+        });
+    }
+}
 
-    <!-- Кабинет техника -->
-    <div id="tech-cabinet" class="screen">
-        <div class="header">
-            <h2 id="tech-name">Руслан</h2>
-            <button class="btn-icon" onclick="logout()">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                    <polyline points="16 17 21 12 16 7"/>
-                    <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-            </button>
-        </div>
 
-        <div class="cabinet-content">
-            <div class="menu-grid">
-                <div class="menu-card" onclick="handleTechAction('report')">
-                    <div class="card-icon">⚙️</div>
-                    <div class="card-title">Звіт по роботі</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTechAction('tasks')">
-                    <div class="card-icon">💳</div>
-                    <div class="card-title">Завдання, замовлення</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTechAction('orders')">
-                    <div class="card-icon">🛒</div>
-                    <div class="card-title">Стіл замовлень</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTechAction('expenses')">
-                    <div class="card-icon">⬇️</div>
-                    <div class="card-title">Витрати</div>
-                </div>
-            </div>
-        </div>
-    </div>
+// --- ADDRESS SEARCH LOGIC ---
 
-    <!-- Кабинет колл-центра -->
-    <div id="callcenter-cabinet" class="screen">
-        <div class="header">
-            <h2>Call-центр</h2>
-            <button class="btn-icon" onclick="logout()">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                    <polyline points="16 17 21 12 16 7"/>
-                    <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-            </button>
-        </div>
+// Основная функция поиска адресов
+async function searchAddresses(query) {
+    if (query.length < 3) return [];
+    
+    try {
+        const response = await fetch('/api/search_aparat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        });
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Search API Error:', error);
+        return [];
+    }
+}
 
-        <div class="cabinet-content">
-            <div class="menu-grid">
-                <div class="menu-card pressed" onclick="handleCallCenterAction('new-task')">
-                    <div class="card-icon">⚙️</div>
-                    <div class="card-title">Нове завдання</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleCallCenterAction('new-card')">
-                    <div class="card-icon">💳</div>
-                    <div class="card-title">Нове замовлення карти</div>
-                </div>
-                
-                <div class="menu-card urgent" onclick="handleCallCenterAction('urgent')">
-                    <div class="card-icon">☢️</div>
-                    <div class="card-title">Терміново</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleCallCenterAction('status')">
-                    <div class="card-icon">📝</div>
-                    <div class="card-title">Статус завдань</div>
-                </div>
-            </div>
+// Настройка поиска для поля ввода
+function setupSearch(inputElement, resultsDivId, selectCallback) {
+    const resultsDiv = document.getElementById(resultsDivId);
+    let timeout = null;
 
-            <!-- Меню выбора неисправности -->
-            <div id="problem-menu" class="problem-menu hidden">
-                <h3>Оберіть проблему:</h3>
-                <div class="problem-grid">
-                    <button class="problem-btn" data-problem="💰купюроприймач">
-                        <span class="problem-icon">💰</span>
-                        <span>Купюроприймач</span>
-                    </button>
-                    <button class="problem-btn" data-problem="🪙монетоприймач">
-                        <span class="problem-icon">🪙</span>
-                        <span>Монетоприймач</span>
-                    </button>
-                    <button class="problem-btn" data-problem="☠️скарга на запах">
-                        <span class="problem-icon">☠️</span>
-                        <span>Скарга на запах</span>
-                    </button>
-                    <button class="problem-btn" data-problem="🔌головний модуль">
-                        <span class="problem-icon">🔌</span>
-                        <span>Головний модуль</span>
-                    </button>
-                    <button class="problem-btn" data-problem="🚰халепа з наливом">
-                        <span class="problem-icon">🚰</span>
-                        <span>Халепа з наливом</span>
-                    </button>
-                    <button class="problem-btn" data-problem="🪣збитий літраж">
-                        <span class="problem-icon">🪣</span>
-                        <span>Збитий літраж</span>
-                    </button>
-                </div>
-                <button class="btn-secondary" onclick="closeProblemMenu()">Скасувати</button>
-            </div>
-        </div>
-    </div>
+    inputElement.oninput = () => {
+        resultsDiv.innerHTML = '';
+        const query = inputElement.value.trim();
+        if (query.length < 3) {
+            resultsDiv.classList.remove('active');
+            return;
+        }
 
-    <!-- Кабинет техдиректора -->
-    <div id="texdir-cabinet" class="screen">
-        <div class="header">
-            <h2>Техдиректор</h2>
-            <button class="btn-icon" onclick="logout()">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                    <polyline points="16 17 21 12 16 7"/>
-                    <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-            </button>
-        </div>
-
-        <div class="cabinet-content">
-            <div class="menu-grid">
-                <div class="menu-card" onclick="handleTexdirAction('new-task')">
-                    <div class="card-icon">⚙️</div>
-                    <div class="card-title">Нове завдання</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTexdirAction('new-card')">
-                    <div class="card-icon">💳</div>
-                    <div class="card-title">Нове замовлення карти</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTexdirAction('termin-tasks')">
-                    <div class="card-icon">📝</div>
-                    <div class="card-title">Завдання з терміном</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTexdirAction('orders-table')">
-                    <div class="card-icon">🛒</div>
-                    <div class="card-title">Стіл замовлень</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTexdirAction('expenses')">
-                    <div class="card-icon">💰</div>
-                    <div class="card-title">Витрати</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleTexdirAction('all-tasks')">
-                    <div class="card-icon">📝</div>
-                    <div class="card-title">Завдання та замовлення</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Кабинет супервизора -->
-    <div id="super-cabinet" class="screen">
-        <div class="header">
-            <h2>Супервізор</h2>
-            <button class="btn-icon" onclick="logout()">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                    <polyline points="16 17 21 12 16 7"/>
-                    <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-            </button>
-        </div>
-
-        <div class="cabinet-content">
-            <div class="menu-grid">
-                <div class="menu-card" onclick="handleSuperAction('daily-report')">
-                    <div class="card-icon">📃</div>
-                    <div class="card-title">Денний звіт</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('tasks-cards')">
-                    <div class="card-icon">🗃️</div>
-                    <div class="card-title">Завдання, картки</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('orders-table')">
-                    <div class="card-icon">🛒</div>
-                    <div class="card-title">Стіл замовлень</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('map-file')">
-                    <div class="card-icon">🗺️</div>
-                    <div class="card-title">Аналіз виконання завдань</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('inki-5week')">
-                    <div class="card-icon">💰</div>
-                    <div class="card-title">Інкі 1 тиж</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('inki-1week')">
-                    <div class="card-icon">💰</div>
-                    <div class="card-title">Інкі 5 тиж</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('service-report')">
-                    <div class="card-icon">📈</div>
-                    <div class="card-title">Звіт service</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('general-report')">
-                    <div class="card-icon">📉</div>
-                    <div class="card-title">Звіт service великий</div>
-                </div>
-                
-                <div class="menu-card" onclick="handleSuperAction('service-big')">
-                    <div class="card-icon">📊</div>
-                    <div class="card-title">Service на мапі</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Модальное окно для отображения данных -->
-    <div id="modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-title">Результат</h3>
-                <button class="btn-icon" onclick="closeModal()">×</button>
-            </div>
-            <div class="modal-body" id="modal-body">
-                <!-- Динамический контент -->
-            </div>
-        </div>
-    </div>
-	<div id="address-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Оберіть адресу</h3>
-                <button class="btn-icon" onclick="closeAddressModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <p style="margin-bottom: 10px; color: var(--tg-theme-hint-color);">
-                    Проблема: <strong id="selected-problem-name">...</strong>
-                </p>
-                
-                <div class="address-search-container">
-                    <input type="text" id="address-input" class="search-input" placeholder="Почніть вводити адресу..." autocomplete="off">
-                    <div id="search-results" class="search-results"></div>
-                </div>
-
-                <button class="btn-primary" onclick="sendTaskToServer()" id="btn-send-task" disabled>
-                    Відправити завдання
-                </button>
-            </div>
-        </div>
-    </div>
-    <div id="report-modal" class="modal hidden" style="z-index: 9999;">
-        <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
+        clearTimeout(timeout);
+        timeout = setTimeout(async () => {
+            const results = await searchAddresses(query);
+            resultsDiv.innerHTML = '';
             
-            <div class="modal-header">
-                <h3>Звіт по техніку</h3>
-            </div>
+            if (results.length > 0) {
+                results.forEach(aparat => {
+                    const resultItem = document.createElement('div');
+                    resultItem.className = 'search-result-item';
+                    resultItem.innerText = `${aparat.addr} (ID: ${aparat.id}, Технік: ${aparat.tech})`;
+                    resultItem.onclick = () => selectCallback(aparat, resultsDiv, inputElement);
+                    resultsDiv.appendChild(resultItem);
+                });
+                resultsDiv.classList.add('active');
+            } else {
+                resultsDiv.classList.remove('active');
+            }
+        }, 300);
+    };
 
-            <div class="modal-body" id="report-content" style="flex-grow: 1; overflow-y: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap;">
-                Завантаження даних...
-            </div>
+    // Скрываем результаты при потере фокуса
+    inputElement.onblur = () => {
+        setTimeout(() => resultsDiv.classList.remove('active'), 200);
+    };
+    
+    inputElement.onfocus = () => {
+        if (resultsDiv.children.length > 0) {
+             resultsDiv.classList.add('active');
+        }
+    };
+}
 
-            <div class="modal-footer" style="padding: 15px; display: flex; gap: 10px; border-top: 1px solid var(--tg-theme-secondary-bg-color);">
-                <button class="btn-primary" style="background-color: #27ae60;" onclick="closeReportModal()">
-                    OK
-                </button>
-                <button class="btn-primary" style="background-color: #f39c12;" onclick="handleReportHelp()">
-                    HELP
-                </button>
-            </div>
+// Колбэк для выбора адреса в модальном окне "Обычная задача"
+function selectAddress(aparat, resultsDiv, inputElement) {
+    selectedAparat = aparat;
+    inputElement.value = aparat.addr; // Устанавливаем адрес в поле ввода
+    resultsDiv.classList.remove('active');
+    
+    // Показываем информацию о выбранном аппарате
+    document.getElementById('selected-address-text').innerText = aparat.addr;
+    document.getElementById('selected-aparat-id').innerText = aparat.id;
+    document.getElementById('selected-address-info').classList.remove('hidden');
+}
 
-        </div>
-    </div>
-	<div id="tasks-modal" class="modal hidden">
-        <div class="modal-content tasks-modal-content">
-            <div class="modal-header">
-                <h3>Менеджер завдань</h3>
-                <button class="btn-icon" onclick="closeTasksModal()">×</button>
-            </div>
-            
-            <div class="tabs-header">
-                <button class="tab-btn active" onclick="switchTab('open')">Відкриті</button>
-                <button class="tab-btn" onclick="switchTab('closed')">Закриті</button>
-            </div>
+// Колбэк для выбора адреса в модальном окне "Задача с термином"
+function selectTerminAddress(aparat, resultsDiv, inputElement) {
+    selectedAparat = aparat;
+    inputElement.value = aparat.addr; // Устанавливаем адрес в поле ввода
+    resultsDiv.classList.remove('active');
+    
+    // Показываем информацию о выбранном аппарате
+    document.getElementById('selected-termin-address-text').innerText = aparat.addr;
+    document.getElementById('selected-termin-aparat-id').innerText = aparat.id;
+    document.getElementById('selected-termin-address-info').classList.remove('hidden');
+}
 
-            <div class="modal-body">
-                <div id="tab-open" class="tab-content active">
-                    <div id="list-open" class="task-list">Завантаження...</div>
-                </div>
 
-                <div id="tab-closed" class="tab-content">
-                    <div id="list-closed" class="task-list">Завантаження...</div>
-                </div>
-            </div>
-        </div>
-    </div>
-	<div id="tech-tasks-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Мої активні завдання</h3>
-                <button class="btn-icon" onclick="closeTechTasksModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <div id="tech-tasks-list" class="task-list">
-                    Завантаження...
-                </div>
-            </div>
-            <div class="modal-footer" style="padding: 15px; border-top: 1px solid var(--tg-theme-secondary-bg-color);">
-                <button class="btn-primary" onclick="closeTechTasksModal()">Зрозуміло</button>
-            </div>
-        </div>
-    </div>
-	<div id="order-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Стіл замовлень</h3>
-                <button class="btn-icon" onclick="closeOrderModal()">×</button>
-            </div>
-            <div class="modal-body">
-                
-                <div class="form-group">
-                    <label>Вкажіть назву</label>
-                    <input type="text" id="order-name-input" placeholder="Що потрібно замовити?">
-                </div>
+// --- MAIN LOGIC ---
 
-                <div class="form-group" style="position: relative;">
-                    <label>Вкажіть адресу</label>
-                    <input type="text" id="order-address-input" class="search-input" placeholder="Почніть вводити адресу..." autocomplete="off">
-                    <div id="order-search-results" class="search-results"></div>
-                </div>
+// Логин
+function handleLogin() {
+    const login = document.getElementById('login-input').value.trim();
+    const password = document.getElementById('password-input').value.trim();
+    const errorMsg = document.getElementById('login-error');
+    
+    errorMsg.classList.add('hidden');
+    
+    const user = users[login];
+    
+    if (user && user.password === password) {
+        currentUser = user;
+        document.getElementById('login-screen').classList.remove('active');
+        
+        // Переключаем на нужный кабинет
+        if (user.role === 'super') {
+            showSuperCabinet();
+        } else if (user.role === 'tech') {
+            showTechCabinet();
+        } else if (user.role === 'callcenter') {
+            showCallCenterCabinet();
+        } else if (user.role === 'texdir') {
+            showTexdirCabinet();
+        }
+        
+        // Устанавливаем кнопку "Выход"
+        tg.MainButton.setText('Вийти');
+        tg.MainButton.show();
+        
+    } else {
+        errorMsg.innerText = 'Невірний логін або пароль.';
+        errorMsg.classList.remove('hidden');
+    }
+}
 
-                <button class="btn-primary" onclick="sendOrderToServer()">
-                    OK
-                </button>
-            </div>
-        </div>
-    </div>
-	<div id="expenses-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Внести витрати</h3>
-                <button class="btn-icon" onclick="closeExpensesModal()">×</button>
-            </div>
-            <div class="modal-body">
-                
-                <div class="form-group">
-                    <label>Вкажіть назву</label>
-                    <input type="text" id="expense-name-input" placeholder="На що витратили? (напр. Бензин)">
-                </div>
+// Переключение вкладок Супервизора
+function showSuperTab(tabId) {
+    document.querySelectorAll('#super-cabinet .tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#super-cabinet .tab-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(tabId).classList.add('active');
+    document.querySelector(`.tab-btn[onclick="showSuperTab('${tabId}')"]`).classList.add('active');
+}
 
-                <div class="form-group">
-                    <label>Вкажіть суму</label>
-                    <input type="number" id="expense-sum-input" placeholder="0" inputmode="numeric">
-                </div>
+// Переключение вкладок Техника
+function showTechTab(tabId) {
+    document.querySelectorAll('#tech-cabinet .tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#tech-cabinet .tab-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(tabId).classList.add('active');
+    document.querySelector(`.tab-btn[onclick="showTechTab('${tabId}')"]`).classList.add('active');
+}
 
-                <button class="btn-primary" onclick="sendExpenseToServer()">
-                    OK
-                </button>
-            </div>
-        </div>
-    </div>
-	<div id="card-order-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Нове замовлення карти</h3>
-                <button class="btn-icon" onclick="closeCardOrderModal()">×</button>
-            </div>
-            <div class="modal-body">
-                
-                <div class="form-group">
-                    <label>Вкажіть ім'я замовника</label>
-                    <input type="text" id="card-name-input" placeholder="ПІБ Клієнта">
-                </div>
+// Открытие меню выбора проблемы
+function openProblemMenu() {
+    // Если это TexDir, то сразу переходим к модалу термина
+    if (currentUser && currentUser.role === 'texdir') {
+        openTerminModal();
+    } else {
+        // Для Super/CallCenter
+        document.getElementById('problem-menu').classList.remove('hidden');
+    }
+}
 
-                <div class="form-group" style="position: relative;">
-                    <label>Вкажіть адресу</label>
-                    <input type="text" id="card-addr-input" class="search-input" placeholder="Почніть вводити адресу..." autocomplete="off">
-                    <div id="card-search-results" class="search-results"></div>
-                </div>
+// Открытие модального окна "Задача с термином"
+function openTerminModal() {
+    document.getElementById('problem-menu').classList.add('hidden'); // Закрываем меню проблем
+    document.getElementById('address-modal').classList.add('hidden'); // Закрываем обычный модал
+    document.getElementById('termin-modal').classList.remove('hidden');
 
-                <button class="btn-primary" onclick="sendCardOrderToServer()">
-                    OK
-                </button>
-            </div>
-        </div>
-    </div>
-	<div id="urgent-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Терміново! 🔥</h3>
-                <button class="btn-icon" onclick="closeUrgentModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Напишіть причину</label>
-                    <input type="text" id="urgent-reason-input" placeholder="Що трапилось?">
-                </div>
-                <div class="form-group" style="position: relative;">
-                    <label>Вкажіть адресу</label>
-                    <input type="text" id="urgent-addr-input" class="search-input" placeholder="Пошук..." autocomplete="off">
-                    <div id="urgent-search-results" class="search-results"></div>
-                </div>
-                <button class="btn-primary" style="background-color: #e74c3c;" onclick="sendUrgentToServer()">
-                    Відправити
-                </button>
-            </div>
-        </div>
-    </div>
+    // Сброс полей
+    document.getElementById('termin-text-input').value = '';
+    document.getElementById('termin-days-input').value = 1;
+    document.getElementById('termin-addr-input').value = '';
+    
+    selectedAparat = null; // Сброс выбранного аппарата
+    document.getElementById('selected-termin-address-info').classList.add('hidden');
 
-    <div id="status-modal" class="modal hidden">
-        <div class="modal-content" style="max-height: 80vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <h3>Активні завдання</h3>
-                <button class="btn-icon" onclick="closeStatusModal()">×</button>
-            </div>
-            <div class="modal-body" id="status-list" style="overflow-y: auto; padding-top: 10px;">
-                Завантаження...
-            </div>
-            <div class="modal-footer" style="padding: 15px; border-top: 1px solid var(--tg-theme-secondary-bg-color);">
-                <button class="btn-primary" onclick="closeStatusModal()">Закрити</button>
-            </div>
-        </div>
-    </div>
-	<div id="super-orders-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Стіл замовлень (Активні)</h3>
-                <button class="btn-icon" onclick="closeSuperOrdersModal()">×</button>
-            </div>
-            <div class="modal-body" id="super-orders-list">
-                Завантаження...
-            </div>
-        </div>
-    </div>
-    <div id="termin-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Завдання з терміном</h3>
-                <button class="btn-icon" onclick="closeTerminModal()">×</button>
-            </div>
-            <div class="modal-body">
-                
-                <div class="form-group">
-                    <label>Яке завдання?</label>
-                    <input type="text" id="termin-text-input" placeholder="Опис роботи">
-                </div>
+    // Настраиваем поиск
+    setupSearch(document.getElementById('termin-addr-input'), 'termin-search-results', selectTerminAddress);
+}
 
-                <div class="form-group">
-                    <label>Кількість днів на виконання</label>
-                    <input type="number" id="termin-days-input" placeholder="Наприклад: 3" inputmode="numeric">
-                </div>
+function closeTerminModal() {
+     document.getElementById('termin-modal').classList.add('hidden');
+}
 
-                <div class="form-group" style="position: relative;">
-                    <label>Вкажіть адресу</label>
-                    <input type="text" id="termin-addr-input" class="search-input" placeholder="Пошук..." autocomplete="off">
-                    <div id="termin-search-results" class="search-results"></div>
-                </div>
 
-                <button class="btn-primary" onclick="sendTerminToServer()">
-                    Створити
-                </button>
-            </div>
-        </div>
-    </div>
-    <!-- Загрузка -->
-    <div id="loading" class="loading hidden">
-        <div class="spinner"></div>
-        <p>Завантаження...</p>
-    </div>
+function closeAddressModal() {
+    document.getElementById('address-modal').classList.add('hidden');
+    // Сбрасываем выбранную проблему и аппарат
+    currentProblem = '';
+    selectedAparat = null;
+    document.getElementById('selected-address-info').classList.add('hidden');
+}
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
-</body>
-</html>
+
+function handleReportHelp() {
+    showTgAlert('Функціонал звітів дозволяє:\n\n1. Сформувати загальний звіт про роботу (вкладка "Звіти").\n2. Отримати статистику активних/закритих завдань (вкладка "Статистика").\n\nДати використовуються для фільтрації виконаних завдань.');
+}
+
+function logout() {
+    // Перезагрузка для сброса состояния
+    location.reload();
+}
+
+// --- Инициализация и События ---
+
+// События
+tg.onEvent('mainButtonClicked', logout);
+
+// Закрытие модальных окон по клику вне контента
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { 
+    if(e.target === m) {
+        m.classList.add('hidden'); 
+        // Если это окно адреса, сбросить выбор
+        if (m.id === 'address-modal') {
+            closeAddressModal();
+        } else if (m.id === 'termin-modal') {
+             closeTerminModal();
+        }
+    } 
+}));
+
+// Обработка клика на кнопки выбора проблемы
+document.querySelectorAll('.problem-btn').forEach(btn => btn.onclick = (e) => {
+    e.preventDefault(); // Остановим дефолтное поведение
+    
+    const problemType = btn.dataset.problem;
+    
+    // Специальный случай: "Завдання з терміном"
+    if (problemType === 'Завдання з терміном') {
+        openTerminModal();
+        return;
+    }
+
+    currentProblem = problemType;
+    document.getElementById('problem-menu').classList.add('hidden');
+    
+    // Обнуляем поля перед открытием
+    document.getElementById('task-text-input').value = '';
+    document.getElementById('selected-address-info').classList.add('hidden');
+
+    // Открываем модал адреса для обычной задачи
+    document.getElementById('address-modal').classList.remove('hidden');
+    document.getElementById('selected-problem-name').innerText = problemType;
+    document.getElementById('address-input').value = '';
+    selectedAparat = null;
+    
+    // Настраиваем поиск адреса
+    setupSearch(document.getElementById('address-input'), 'search-results', selectAddress);
+});
+
+// Дополнительная логика, если нужно открыть модал адреса напрямую
+// Эта функция больше не используется напрямую, но оставлю ее как заглушку
+/* function openAddressModal(problem) {
+    document.getElementById('address-modal').classList.remove('hidden');
+    document.getElementById('selected-problem-name').innerText = problem;
+    document.getElementById('address-input').value = '';
+    selectedAparat = null;
+    setupSearch(document.getElementById('address-input'), 'search-results', selectAddress);
+}
+*/
+
+// Вход по Enter
+document.getElementById('password-input').addEventListener('keypress', e => { 
+    if(e.key === 'Enter') handleLogin(); 
+});
+
+console.log('App Ready');

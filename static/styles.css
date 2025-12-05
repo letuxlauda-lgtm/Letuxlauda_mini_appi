@@ -124,6 +124,67 @@ body {
     box-shadow: none;
 }
 
+.circle-content {
+    color: var(--tg-theme-text-color);
+}
+
+.earnings-label {
+    font-size: 0.9em;
+    color: var(--tg-theme-hint-color);
+    margin-bottom: 5px;
+}
+
+.total-earnings {
+    font-size: 1.6em;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 5px 0 15px 0;
+}
+
+.split-earnings {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 20px;
+    font-size: 1em;
+    border-top: 1px dashed var(--tg-theme-hint-color);
+}
+
+.split-earnings:last-child {
+    border-bottom: 1px dashed var(--tg-theme-hint-color);
+}
+
+.cash-label, .noncash-label {
+    font-weight: 600;
+}
+
+/* Анимация для "прогружающегося" круглешочка */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--tg-theme-hint-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: none;
+    margin: 20px auto;
+}
+
+.spinner.active {
+    display: block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Дополнительные улучшения */
+.btn-primary:hover, .btn-secondary:hover {
+    filter: brightness(0.9);
+    transform: translateY(-1px);
+    transition: all 0.2s ease-out;
+}
+
 .btn-secondary {
     width: 100%;
     padding: 14px;
@@ -170,8 +231,73 @@ body {
 }
 
 /* Контент кабинета */
-.cabinet-content {
+.cabinet {
     padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px; /* Добавляем расстояние между основными блоками */
+}
+
+/* Кнопка "Створити нове завдання" на всю ширину */
+.cabinet-actions .create-task-btn {
+    grid-column: 1 / -1; /* Занимает всю ширину */
+}
+
+/* --- Стили для кругового дашборда (Earnings Circle) --- */
+#super-dashboard {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+}
+
+.dashboard-card {
+    background: var(--tg-theme-secondary-bg-color);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 350px;
+    text-align: center;
+}
+
+.earnings-circle {
+    width: 250px;
+    height: 250px;
+    border-radius: 50%;
+    /* Красивый градиент и тень */
+    background: linear-gradient(145deg, var(--tg-theme-bg-color), var(--tg-theme-secondary-bg-color));
+    box-shadow: inset 5px 5px 10px rgba(0,0,0,0.05),
+                inset -5px -5px 10px rgba(255,255,255,0.8);
+    margin: 0 auto 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border: 5px solid var(--primary-color); /* Круговой ободок */
+    transition: all 0.3s ease-in-out;
+}
+
+.cabinet-actions {
+    display: grid; /* Используем сетку для кнопок */
+    grid-template-columns: 1fr 1fr; /* 2 кнопки в ряд */
+    gap: 10px;
+    margin-top: 10px; /* Отступ сверху после заголовка */
+}
+
+.action-title {
+    color: var(--tg-theme-hint-color);
+    font-size: 1.2em;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--tg-theme-secondary-bg-color);
+    padding-bottom: 5px;
+}
+
+.cabinet-title {
+    text-align: center;
+    color: var(--tg-theme-text-color);
+    margin-bottom: 0;
+    font-size: 1.8em;
+    font-weight: 700;
 }
 
 /* Сетка меню */
